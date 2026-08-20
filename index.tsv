@@ -1,0 +1,11 @@
+# regex	target-id	one-line-conclusion
+raise EOFError|DataParallelController hit an exception|Received sigquit from a child process	eoferror-dataparallelcontroller	下游清理症状；不要据此判断根因，转到 find-first-error
+hipIpcOpenMemHandle.*invalid device pointer	deepep-rocshmem-ipc-invalid-pointer	RocSHMEM HIP IPC 打开失败；检查首错 rank、设备可见性和跨进程 IPC
+(torch\.)?OutOfMemoryError: HIP out of memory	hip-out-of-memory	显存分配失败；按阶段、首个 rank 和分配点继续定位
+\[lightop\].*fail to call.*HIP error	lightop-hip-call-exit-zero	LightOp HIP_CALL 失败后 exit(0)，可能无 Python traceback
+Detected some but not all shards of .* are quantized	quant-fused-shards-mixed-precision	融合层 shard 精度不一致
+Ninja is required to load C\+\+ extensions	lightop-test-build-dir-mismatch	LightOp 构建环境缺 ninja；与运行时算子故障区分
+no build/lib\.\* directory found	lightop-test-build-dir-mismatch	测试 runner 未找到其预期的 build/lib.* 目录
+compiled lightop/op\.\*\.so is missing	lightop-test-build-dir-mismatch	测试 runner 找到目录但扩展产物缺失
+Get GPU arch from rocminfo failed	lightop-asm-dir-null	LightOp 无法解析 GPU 架构，检查容器内 rocminfo 和 GPU_ARCHS
+Unsupported MoE runner backend	quant-fused-shards-mixed-precision	量化 MoE backend 选择不受支持，转 weight-quant 路由
