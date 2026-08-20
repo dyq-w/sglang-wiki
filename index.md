@@ -1,5 +1,7 @@
 # 知识库索引
 
+> 本索引只包含诊断知识。`skills/` 是随 Git 分发的工具流程，问题分析、signature 匹配和全文检索时必须忽略，也不会加入 `index.tsv`。
+
 ## 诊断入口
 
 1. [证据采集](playbooks/evidence-collection.md)

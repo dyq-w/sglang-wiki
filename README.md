@@ -16,10 +16,12 @@
 # Wiki 默认位置
 export SGLANG_KB_ROOT="$HOME/sglang-wiki"
 
-# 两个 Skill 已放到 Claude Code 用户级目录
-ls "$HOME/.claude/skills/sglang-triage/SKILL.md"
-ls "$HOME/.claude/skills/sglang-kb-record/SKILL.md"
+# 仓库内自带两个 Skill 的规范副本
+ls "$SGLANG_KB_ROOT/skills/sglang-triage/SKILL.md"
+ls "$SGLANG_KB_ROOT/skills/sglang-kb-record/SKILL.md"
 ```
+
+安装到 Claude Code 用户级目录，推荐按 [skills/README.md](skills/README.md) 建立符号链接；这样后续 `git pull` 会同步获得 Skill 更新。
 
 查询入口：
 
@@ -55,13 +57,17 @@ sglang-wiki/
 ├── failures/
 ├── playbooks/
 ├── components/
-└── raw/
+├── raw/
+└── skills/                    # 随 Git 分发的两个 Skill；诊断时忽略
 ```
 
 ## 维护
 
 - 解决问题后，手动触发 `sglang-kb-record`。
 - 先生成草稿和 diff；人工确认后才写入。
+- 当前案例若暴露出具体流程缺陷，可在同一 diff 中更新 `skills/` 下的 Skill 规范副本。
 - 确认后的写入会自动创建仅包含本次变更的本地 Git commit。
 - 不自动 push 或创建 PR；由用户在 GitHub 完成 PR 和审核。
 - `--lint` 默认只报告，不自动修改条目状态。
+
+`skills/` 仅用于分发和维护，不属于诊断知识；`sglang-triage` 的问题分析和全文搜索会排除该目录。

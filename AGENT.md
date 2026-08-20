@@ -79,19 +79,30 @@ possible-causes: []
 - `playbooks/`：怎么查；按失败阶段组织。
 - `components/`：代码基线摘要；只写入口、契约和已验证行为，不写完整代码文档。
 - `raw/`：经脱敏的证据快照或原始日志说明；禁止无审查加入密钥、令牌、内网拓扑和个人信息。
+- `skills/`：随 Wiki 分发的两个 Skill 规范副本；只存流程，不属于诊断知识，不进入 `index.md` / `index.tsv`。
 - `index.md`：人读导航。
 - `index.tsv`：机器首查，一行一个归一化 regex。
 - `log.md`：append-only 变更时间线。
+
+## Skill 分发与维护
+
+- 规范副本位于 `skills/sglang-triage/SKILL.md` 和 `skills/sglang-kb-record/SKILL.md`。
+- `sglang-triage` 诊断问题时必须忽略 `skills/`；任何递归搜索都要排除该目录，Skill 文本不能作为故障证据。
+- `sglang-kb-record` 每次沉淀后做轻量流程复盘。只有当前案例暴露出具体、可复现的流程缺陷时，才把最小 Skill 修改加入同一草稿和 diff。
+- Skill 只存流程；案例 signature、根因、版本和环境事实仍写在知识目录。
+- Wiki 中的 Skill 是 Git 规范版本；本地 `$HOME/.claude/skills/` 是运行副本。commit 后可同步运行副本，但不得覆盖未获确认的本地定制。
 
 ## 写回流程
 
 1. 读取 `index.md`、`index.tsv` 和候选已有页面。
 2. 同一根因的不同表现优先合并，不无脑新建。
 3. 生成草稿，不直接覆盖。
-4. 展示完整 diff。
-5. 用户确认后写入文件并同步两份索引和 `log.md`。
-6. 写入和校验成功后，自动在独立分支创建仅包含本次知识变更的本地 commit。
-7. 不自动 push 或创建 PR；由用户在 GitHub 完成 PR 和审核。
+4. 复盘当前案例是否暴露 Skill 流程缺陷；有具体依据才加入最小 Skill diff，否则明确无需修改。
+5. 展示完整知识与 Skill diff。
+6. 用户确认后写入文件并同步两份索引和 `log.md`。
+7. 写入和校验成功后，自动在独立分支创建仅包含本次变更的本地 commit。
+8. 若提交包含 Skill，安全同步用户级安装副本；存在本地定制时只报告差异。
+9. 不自动 push 或创建 PR；由用户在 GitHub 完成 PR 和审核。
 
 ## Lint
 
