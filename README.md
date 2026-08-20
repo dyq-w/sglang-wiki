@@ -62,5 +62,6 @@ sglang-wiki/
 
 - 解决问题后，手动触发 `sglang-kb-record`。
 - 先生成草稿和 diff；人工确认后才写入。
-- Git commit、push 和 PR 均需用户明确授权。
+- 确认后的写入会自动创建仅包含本次变更的本地 Git commit。
+- 不自动 push 或创建 PR；由用户在 GitHub 完成 PR 和审核。
 - `--lint` 默认只报告，不自动修改条目状态。
