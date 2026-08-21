@@ -32,6 +32,7 @@
 | [hip-out-of-memory](symptoms/hip-out-of-memory.md) | strong | 显存分配失败，但仍需定位发生阶段和首个 rank |
 | [process-disappeared](symptoms/process-disappeared.md) | weak | 进程消失；可能是 signal、abort、OOM 或 LightOp `exit(0)` |
 | [silent-performance-regression](symptoms/silent-performance-regression.md) | weak | 服务可用但算子配置或设备映射可能静默回退 |
+| [slimquant-w4a8-logger-misleading](symptoms/slimquant-w4a8-logger-misleading.md) | none | import-time 横幅，不代表 w4a8 生效；改看 MoE method 类名 |
 
 ## Failures
 
@@ -47,6 +48,9 @@
 | [lightop-test-build-dir-mismatch](failures/lightop-test-build-dir-mismatch.md) | launch | confirmed | 测试 runner 只找 `build/lib.*`，当前 checkout 只有 `build/lib` 且无 `op*.so` |
 | [quant-fused-shards-mixed-precision](failures/quant-fused-shards-mixed-precision.md) | weights-quant | confirmed | 融合层各 shard 精度不一致时主动报错 |
 | [quant-scale-tp-split](failures/quant-scale-tp-split.md) | accuracy | suspected | per-channel scale 应按 output dim 切，per-tensor scale 不按 TP 切 |
+| [tilelang-hcu-gfx936-unsupported](failures/tilelang-hcu-gfx936-unsupported.md) | kernel | confirmed | tilelang GEMM 白名单不含 gfx936，MHC pre 编译期 hard assert |
+| [sgl-kernel-version-op-missing](failures/sgl-kernel-version-op-missing.md) | kernel | confirmed | wheel 落后于挂载源码，算子被重命名导致 `_OpNamespace` AttributeError |
+| [dsv4-hcu-garbled-output](failures/dsv4-hcu-garbled-output.md) | accuracy | suspected | gfx936 上启动正常但输出无语义；已排除 prompt 编码与 MHC aiter 路径 |
 
 ## Components
 
@@ -58,3 +62,4 @@
 - [2026-08-15 DeepEP / RocSHMEM IPC 证据](raw/20260815-deepep-ipc-invalid-pointer.md)
 - [2026-08-14 DSpark HIP OOM 证据](raw/20260814-dspark-hip-oom.md)
 - [2026-08-20 技术基线调查](baseline/2026-08-20-bootstrap.md)
+- [2026-08-21 DeepSeek-V4 prefill on gfx936 证据](raw/20260821-dsv4-prefill-hcu-gfx936.md)

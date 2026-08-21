@@ -9,3 +9,9 @@ no build/lib\.\* directory found	lightop-test-build-dir-mismatch	测试 runner �
 compiled lightop/op\.\*\.so is missing	lightop-test-build-dir-mismatch	测试 runner 找到目录但扩展产物缺失
 Get GPU arch from rocminfo failed	lightop-asm-dir-null	LightOp 无法解析 GPU 架构，检查容器内 rocminfo 和 GPU_ARCHS
 Unsupported MoE runner backend	quant-fused-shards-mixed-precision	量化 MoE backend 选择不受支持，转 weight-quant 路由
+HCU arch gfx[0-9a-z]+ not supported for MLS/GEMM_MLS	tilelang-hcu-gfx936-unsupported	tilelang GEMM 白名单不含该 arch，关闭 SGLANG_OPT_USE_TILELANG_MHC_PRE 走 aiter
+Check failed.*supported\.count\(mcpu\)	tilelang-hcu-gfx936-unsupported	tilelang 编译期 hard assert，非 kernel 执行失败
+'_OpNamespace' 'sgl_kernel' object has no attribute	sgl-kernel-version-op-missing	wheel 落后于挂载源码，逐名探测新旧算子名区分版本错配与未加载
+\[slimquant_w4a8_marlin\] requested_backend=	slimquant-w4a8-logger-misleading	import-time 横幅，不代表 w4a8 生效，改看 MoE method 类名
+No (HuggingFace )?chat template found	dsv4-hcu-garbled-output	DeepSeek-V4 走 dsv4 原生编码器，该告警是噪声，不是乱码原因
+is still TokenizersBackend after retries	dsv4-hcu-garbled-output	transformers 不识别 deepseek_v4，降级为通用 tokenizer；不影响 dsv4 编码
