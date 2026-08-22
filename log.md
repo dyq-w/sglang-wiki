@@ -45,3 +45,24 @@
   `post`/`comb` 近似精确
 - 记录最高怀疑项：`prefill.sh:39` 的 `SGLANG_NSA_FUSE_TOPK=false` 是调试残留，
   该 env 已被默认 `True` 的 `SGLANG_DSA_FUSE_TOPK` 取代
+
+## [2026-08-22] update | DeepSeek-V4 乱码根因确认为 EnvBool 覆盖 HCU 默认
+
+- `dsv4-hcu-garbled-output` 从 `suspected` 升级为 `confirmed`：根因是
+  `prefill.sh` 中 `export SGLANG_OPT_USE_TILELANG_MHC_PRE=0` 覆盖了 HCU 默认，
+  MHC pre 落到未验证 torch fallback。用反证矩阵（4 变体）区分 MHC_PRE
+  与 AITER_INDEXER：只 export MHC_PRE=0 复现乱码，只 export AITER_INDEXER=false
+  正常
+- 撤销先前对 `SGLANG_NSA_FUSE_TOPK` 与 MHC aiter 数值差异的怀疑；均已重新排除
+- `tilelang-hcu-gfx936-unsupported` 补充警告：workaround `SGLANG_OPT_USE_TILELANG_MHC_PRE=0`
+  仅在挂载旧 commit（缺少 `_is_hcu and _use_aiter_tilelang_mhc` 兜底）时才有意义；
+  wheel 版 sglang 必须保持默认 True。挂载源上还要**同时**保留
+  `SGLANG_OPT_USE_AITER_INDEXER=True`，否则 indexer 会落到 deep_gemm →
+  tilelang MLS，再次撞 gfx936 白名单
+- 教训：`environ.py` 里的 `EnvBool` 服从「外部 env > 代码 override > default」，
+  `server_args.py` 中根据 HCU/SM120/is_hip 做的自动 override 会被 shell export 直接
+  压过。审 prefill.sh 时凡 `SGLANG_OPT_*` 不确定的一律删除，让 sglang 平台探测自主
+  配置
+- 本次无需修改 Skill：sglang-triage 的证据收集、find-first-error、阶段路由、
+  反证实验都指向了正确方向；上一轮 grep 拼写偏差导致的一次误判是执行注意力问题，
+  非 Skill 契约不足

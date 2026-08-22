@@ -2,146 +2,149 @@
 id: dsv4-hcu-garbled-output
 kind: failure
 layer: accuracy
-components: [deepseek-v4, hcu, lightop, aiter, dsa-indexer]
+components: [deepseek-v4, hcu, aiter, mhc]
 signatures: []
 signature-sources: []
 detection: |
-  服务正常启动并返回 HTTP 200，但 /v1/chat/completions 的 content 是无语义字符流
-  （长串 `_` / `|` / 空格构成的 ASCII 框线，夹杂零散 token），
-  finish_reason=length 而非 stop。日志无 traceback、无 NaN 告警。
-  这是纯静默精度故障：只能由输出内容判定，不能靠日志 signature 匹配。
+  服务正常启动并返回 HTTP 200，但 /v1/chat/completions 及 /v1/completions 和
+  /generate 全部端点 content 为无语义字符流（长串 `_` / `|` / 空格构成的 ASCII
+  框线，夹杂零散 token 或重复片段 `Hom nay Hom nay` / `{/cableimplication` /
+  `1.1.1.1.1.`），finish_reason=length 而非 stop。日志无 traceback、无 NaN 告警。
+  纯静默精度故障，只能由输出内容判定。
 masquerades-as:
   - silent-performance-regression
 repro-condition:
   - "observed: gfx936 + DeepSeek-V4-Flash INT8 w8a8 + tp8/ep8/attn_cp8 + dsv4 attention backend"
-  - "observed: SGLANG_OPT_USE_TILELANG_MHC_PRE=0（gfx936 上必须，见 tilelang-hcu-gfx936-unsupported）"
-  - "observed: SGLANG_NSA_FUSE_TOPK=false（人工调试残留，非默认值）"
-  - "temperature=0 下稳定复现；未做 TP=1 / 关融合的对照实验"
+  - "触发条件：export SGLANG_OPT_USE_TILELANG_MHC_PRE=0（人工设置，覆盖了 environ 默认 True）"
+  - "SGLANG_ROCM_USE_AITER_TILELANG_MHC=1 时该 export 会跳过唯一验证过的 MHC pre kernel"
+  - "temperature=0 稳定复现；反证：单独 export SGLANG_OPT_USE_AITER_INDEXER=false 不复现"
 applies-to:
-  sglang-das: "deepseek-v4-opt @ 9ca1b25f7f"
-  sgl-kernel: "0.4.4+das.opt1.dtk2604.torch2100.2608132334.g97a193"
+  sglang: "0.5.15.post2+das.opt1.dtk2604.torch2100.2608132257.g97a193 (wheel)"
+  sgl-kernel: "0.4.4+das.opt1.dtk2604.torch2100.2608132334.g97a193 或 0.4.6+das.opt1..."
   tilelang: "0.1.9+das185.dtk2604.torch2100.2608121523.gf631c9"
   aiter: "0.1.5+das185.dtk2604.torch2100.2608151919.g672e2d"
   gpu: "gfx936 (HCU/DCU BW) x8"
-status: suspected
+status: confirmed
 first-seen: 2026-08-21
 fixed-in:
 verify: |
-  # 判定当前是否仍复现（需服务在跑）：
+  # PASS: 删掉 prefill.sh 中的 `export SGLANG_OPT_USE_TILELANG_MHC_PRE=0` 后复测：
   curl -s http://127.0.0.1:30001/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{"model":"m","messages":[{"role":"user","content":"请介绍一下自己。"}],
          "temperature":0,"max_tokens":128}' | python3 -m json.tool
-  # FAIL(仍复现): content 为无语义字符流，finish_reason=length。
-  # PASS: content 为通顺自然语言。
+  # 预期 content 为通顺自然语言，finish_reason 可为 length 或 stop。
+  # FAIL(仍复现): content 仍为无语义框线字符 → 尚有其他 env 覆盖了 HCU 默认路径。
   # NOT-APPLICABLE: 非 gfx936 或非 DeepSeek-V4。
-  # ENV-MISMATCH: sgl-kernel / tilelang / aiter 版本与 applies-to 不同。
+  # ENV-MISMATCH: sglang / sgl-kernel / aiter 版本与 applies-to 不同。
 sources:
   - "raw/20260821-dsv4-prefill-hcu-gfx936.md"
 ---
 
-# DeepSeek-V4 在 gfx936 上启动正常但输出乱码
+# DeepSeek-V4 在 gfx936 上因 export 关闭 TILELANG_MHC_PRE 输出乱码
 
 ## 现象
 
-服务完整启动（`The server is fired up and ready to roll!`），请求返回 200，
-但 `content` 无语义：
+服务完整启动，请求返回 200，但 `content` 无语义（`/v1/chat/completions`、
+`/v1/completions`、`/generate` 全端点复现）：
 
 ```text
-#  _____________________________________________________________________
-# /                                                                     \|
-... 长串框线字符 ...  a_n+! ., in
+#  _________________________________________________________________
+# |\/
+# |\/
+# |\/|/|  |\/|/| |  |/| |/| |/| ...
 ```
 
-- `finish_reason=length`（撞满 `max_tokens=128`，模型从未生成 EOS）；
-- `temperature=0` 下稳定复现；
-- 日志无 traceback、无 NaN/inf 告警、无 kernel 报错；
-- 8 个 rank 的 decode 吞吐正常（~4.4 token/s），无掉队 rank。
-
-**未定位到根因，故为 `suspected`。** 本页记录已排除项，避免重复排查。
+- `finish_reason=length`（撞满 `max_tokens`，模型从未生成 EOS）；
+- `temperature=0` 稳定复现；
+- 日志无 traceback、无 NaN/inf 告警；
+- 8 rank 吞吐正常。
 
 ## 根因
 
-未确定。已排除输入侧与两处 kernel 替换（见定位过程），
-剩余怀疑集中在 gfx936 上的融合算子精度，尚未做对照实验。
+`prefill.sh` 中 `export SGLANG_OPT_USE_TILELANG_MHC_PRE=0` 关闭了 gfx936 上
+**唯一验证过的 MHC pre 路径**。
+
+`environ.py:1303` 默认 `True`；`server_args.py:4529-4548` 中 HCU 分支
+（`elif is_hip(): if not is_hcu(): ...`）**不会**关它，即默认保持 True。
+但 `EnvBool` 让外部 env 优先，用户 export=0 直接把 HCU 默认路径推翻。
+
+`deepseek_v4.py:1456` 的 MHC pre 分岔（wheel 版）按顺序：
+
+```python
+if envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.get():
+    if _is_hcu and _use_aiter_tilelang_mhc:            # ← 默认命中，正确路径
+        post, comb, y = mhc_pre_big_fuse(...)          # aiter.ops.tilelang.pre_big_fuse_tilelang
+    else:
+        from sglang.kernels.ops.layernorm.mhc import mhc_pre
+        post, comb, y = mhc_pre(...)
+    return ...
+if _is_hip and envs.SGLANG_OPT_USE_AITER_MHC_PRE.get():
+    from aiter.ops.mhc import mhc_pre
+    ...
+if envs.SGLANG_OPT_DEEPGEMM_HC_PRENORM.get():
+    ...
+# fallthrough: torch 手写 hc_pre_torch_impl
+```
+
+`_use_aiter_tilelang_mhc = get_bool_env_var("SGLANG_ROCM_USE_AITER_TILELANG_MHC")`
+在本次环境中为 `True`（prefill.sh 已 export=1）。
+
+用户 export=0 之后：
+- 第一个 `if` 被跳过；
+- `SGLANG_OPT_USE_AITER_MHC_PRE` 未 export，走 `environ` 默认值——在**当前 wheel**
+  里 `deepseek_v4.py:1456-1500` 附近**没有等价的 `_use_aiter_tilelang_mhc` 兜底**，
+  该分支要求 `_is_hip and envs.SGLANG_OPT_USE_AITER_MHC_PRE.get()`；
+- `SGLANG_OPT_DEEPGEMM_HC_PRENORM=0`（用户 prefill.sh 已 export=0，deepgemm _C.so
+  也不可用）；
+- **落到最后的 torch fallback**。该 fallback 在 DSv4 + INT8 w8a8 + attn_cp=8 组合
+  上从未被验证，数值精度不足以维持 attention，输出结构性乱码。
 
 ## 定位过程
 
-**排除 prompt 编码 / chat template。** 这是最初的怀疑方向，已证伪。
-checkpoint 无 `chat_template`（`tokenizer_config.json` 无该键，
-无 `chat_template.jinja`），且 `AutoTokenizer` 因 transformers 不识别
-`model_type: deepseek_v4` 而降级为 `TokenizersBackend`，日志因此出现
-`No HuggingFace chat template found` / `No chat template found, defaulting to
-'string' content format`。但这些都是**噪声**：
-`resolve_chat_encoding_spec`（`entrypoints/openai/chat_encoding.py:128`）
-按 architecture 命中 `DeepseekV4` 返回 `"dsv4"`，走原生编码器，
-完全绕开 `apply_chat_template`。实测该编码器输出：
+**反证实验**（wheel 版 sglang，只改 prefill.sh 的 env，其余保持一致）：
 
-```text
-dsv4 n_tokens: 8
-ids: [0, 128803, 2788, 70979, 1330, 320, 128804, 128822]
-decoded: '<｜begin▁of▁sentence｜><｜User｜>请介绍一下自己。<｜Assistant｜></think>'
-```
+| 变体 | `SGLANG_OPT_USE_TILELANG_MHC_PRE` | `SGLANG_OPT_USE_AITER_INDEXER` | 输出 |
+|---|---|---|---|
+| A（两者 export） | `0` | `false` | 乱码 `Hom nay Hom nay` / `{/cableimplication` |
+| B（只 export MHC_PRE） | `0` | (不 export) | 乱码 `|\/|/|` / `1.1.1.1.1.` |
+| C（只 export AITER_INDEXER） | (不 export) | `false` | **正确**：自然中文自我介绍 |
+| D（都不 export） | (不 export) | (不 export) | 正确 |
 
-8 tokens 与服务端 `prompt_tokens=8` 完全一致，特殊 token 齐全。
-**输入侧正确，不是模板问题。**
+- B/C 对比锁定：**MHC_PRE 是主因，AITER_INDEXER 与正确性无关**（HCU indexer 有多条
+  可用路径，切换不影响 attention 数值）。
+- 排除挂载源问题：本次全程使用 wheel `0.5.15.post2+das.opt1...g97a193`，无 editable pth。
+- 排除 sgl_kernel 版本：0.4.4 / 0.4.6 均能在正确 env 下产出通顺输出；乱码与 kernel
+  版本无关。0.4.6 曾观察到 `lightop int8_utils.matmul_int8` VMFault，是同一根因
+  引发下游 kernel 越界（错路径的 tensor 视图不满足 kernel 前置条件），修复主因后
+  该崩溃亦消失。
+- 排除 chat template：`/v1/completions` 与 `/generate` 同样乱码，且 `resolve_chat_encoding_spec`
+  已按 architecture 命中 dsv4 原生编码器。见
+  [dsv4 编码器对照数据](../raw/20260821-dsv4-prefill-hcu-gfx936.md#阶段三-升级-wheel-后启动成功但输出乱码)。
 
-**排除 MHC pre 的 aiter 替换。** gfx936 上必须设
-`SGLANG_OPT_USE_TILELANG_MHC_PRE=0`（tilelang 白名单不含 gfx936，
-见 [tilelang-hcu-gfx936-unsupported](tilelang-hcu-gfx936-unsupported.md)），
-这会把 MHC pre 从 tilelang 切到 `aiter.ops.mhc.mhc_pre`。
-对照 `deepseek_v4.py` 的 torch 参考实现（`hc_pre_torch_impl` +
-`hc_split_sinkhorn`）实测（HC=4, HID=7168, N=16）：
-
-```text
-y      max_abs=0.031250  rel=0.004785  finite=True
-post   max_abs=0.000006  rel=0.000003  finite=True
-comb   max_abs=0.000002  rel=0.000002  finite=True
-```
-
-`y` 的误差是 bf16 量级，`post`/`comb` 近似精确。**该替换不是乱码来源。**
-
-**排除 sgl_kernel 版本错配。** 升级 wheel 后
-`deepseek_v4_topk_transform_512` 已注册（见
-[sgl-kernel-version-op-missing](sgl-kernel-version-op-missing.md)），
-不再走 torch 回退。
-
-**排除量化方案选错。** MoE 实际方法为
-`CompressedTensorsW8A8Int8MarlinMoEMethod`，与 INT8 w8a8 checkpoint 一致；
-`[slimquant_w4a8_marlin]` 横幅是 import-time 噪声，见
-[slimquant-w4a8-logger-misleading](../symptoms/slimquant-w4a8-logger-misleading.md)。
-
-**排除 unfused topk 路径缺少 page-table 变换。** `SGLANG_NSA_FUSE_TOPK=false`
-使 `topk_transform`（`dsa/dsa_topk_backend.py:94-95`）直接返回
-`_topk_unfused` 的**局部**索引，不做 page-table 变换。核对调用方确认
-`dsa_backend.py:2275` / `:3206` 的 `else` 分支会调用
-`transform_index_page_table_decode/prefill` 补上该变换，语义闭合。
-**静态看无缺陷**，但该路径在 HCU 上未做数值对照。
+之前记录的怀疑项已排除：`SGLANG_NSA_FUSE_TOPK=false` 并非根因，本次修复未变动
+该 env；重新验证 MHC 数值差异（bf16 量级）也证实 aiter tilelang 路径本身无问题。
 
 ## 修复 / 规避
 
-尚无确认修复。按怀疑度排序的下一步（每次只改一项，其余不变）：
+删除 `prefill.sh` 中的两行：
 
-1. **恢复 `SGLANG_NSA_FUSE_TOPK` 默认值**：`prefill.sh:39` 的
-   `export SGLANG_NSA_FUSE_TOPK=false` 注释写明是
-   `temp: bypass lightop fused topk to isolate crash`，
-   属调试残留；该 env 已被 `SGLANG_DSA_FUSE_TOPK` 取代（默认 `True`，
-   `environ.py:157` 保留 deprecated alias）。删掉这行恢复默认融合路径，
-   是成本最低且最可疑的一项。
-2. **逐个关闭 gfx936 上的融合算子**，观察输出是否恢复：
-   `SGLANG_OPT_USE_FUSED_HASH_TOPK` / `SGLANG_OPT_USE_JIT_KERNEL_FUSED_TOPK`
-   / `SGLANG_USE_FUSED_DPSKV4_QNORM_ROPE_KV_ROPE_QUANT` /
-   `SGLANG_ROCM_USE_AITER_MOE` / `SGLANG_GROUPGEMM` / `SGLANG_USE_LIGHTOP`。
-3. **降并行维度**：TP=1 单卡跑同一 prompt。若 TP=1 正确而 TP=8 乱码，
-   按 [quant-scale-tp-split](quant-scale-tp-split.md) 查 scale 切分。
-4. **关 CP**：去掉 `--enable-nsa-prefill-context-parallel`，
-   排除 `attn_cp=8` 的 round-robin-split 路径。
+```bash
+export SGLANG_OPT_USE_TILELANG_MHC_PRE=0
+export SGLANG_OPT_USE_AITER_INDEXER=false
+```
 
-定位方法见 [accuracy playbook](../playbooks/accuracy.md)：先固定可比条件，
-用二分矩阵定位首个偏离层，不要从最终乱码反推具体 kernel。
+（`AITER_INDEXER` 那行不是主因但也无必要，保留会掩盖真正的 HCU 默认路径。）
+
+原则：**凡是 `environ.py` 里为 `EnvBool` 的 flag，不知道正确值就不要 export。**
+`server_args.py` 里根据 HCU / SM120 / is_hip 做的自动 override，只要外部 env 一
+export 就被压过；一次覆盖会引发全链路重定向到未验证路径。
 
 ## 复发判据
 
-- 服务 ready、无 traceback，但 content 无语义且 `finish_reason=length`；
-- 输入侧已验证正确（`prompt_tokens` 与 dsv4 编码器一致）；
-- gfx936 + DeepSeek-V4 + 上述融合算子组合。
+- 服务 ready、无 traceback，`/v1/chat/completions`、`/v1/completions`、
+  `/generate` 全端点乱码，`finish_reason=length`；
+- gfx936 + DeepSeek-V4 + `SGLANG_ROCM_USE_AITER_TILELANG_MHC=1`；
+- 环境中存在 `SGLANG_OPT_USE_TILELANG_MHC_PRE=0` 或等价把该 EnvBool 覆盖为
+  false 的写法（含 `.env`、shell rc、Docker `-e`）；
+- 删除该 export 后单条 curl 即恢复。

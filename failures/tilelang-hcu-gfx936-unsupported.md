@@ -114,6 +114,35 @@ prefill 与 decode 使用同一组 MHC 开关，需同时设置。
 正式修复方向：为 `hc_pre` 补 `_is_hcu` 分支（对齐 `mhc_post` 的处理），或在 tilelang
 白名单中加入 gfx936 并验证 MMAC 正确性。均不在本次记录范围。
 
+### ⚠️ 该 workaround 仅适用于挂载旧 commit，不适用于 wheel 版 sglang
+
+**wheel 版 sglang（0.5.15.post2+das.opt1...g97a193 及之后）里 `deepseek_v4.py`
+在 `SGLANG_OPT_USE_TILELANG_MHC_PRE.get()` 内部有 `_is_hcu and _use_aiter_tilelang_mhc`
+兜底**，走 `aiter.ops.tilelang.pre_big_fuse_tilelang`；此路径不触发 MLS/GEMM_MLS
+编译，gfx936 上稳定。因此 wheel 版**必须保持 `SGLANG_OPT_USE_TILELANG_MHC_PRE=True`（默认）**，
+不能 export 关掉；关掉会造成 [dsv4-hcu-garbled-output](dsv4-hcu-garbled-output.md)
+所述的静默乱码。
+
+**挂载源** `deepseek_v4.py:1636` 及 `mhc.py:960 mhc_pre` 目前也有相同兜底代码
+（`_is_hcu and _use_aiter_tilelang_mhc`），因此 wheel 与挂载源在 MHC pre 上应
+一致；本页原 workaround 是老 commit 上写的，需在当前挂载源上确认。
+
+若挂载源上确实必须 `TILELANG_MHC_PRE=0`（例如更旧的 commit），**同时不能关
+`SGLANG_OPT_USE_AITER_INDEXER`**——挂载源的
+`sglang/srt/layers/attention/dsv4/indexer.py` 缺少 wheel 版
+`indexer.py:730-742` 处的 HCU lightop 兜底分支（`elif _is_hcu → lightop.attention.paged_mqa_logits`），
+一旦把 aiter 分支也关掉，indexer 会落到 `from deep_gemm import fp8_paged_mqa_logits`，
+其内部同样拉起 tilelang MLS codegen，再次撞 `GetHcuArchString` 白名单，
+scheduler 死亡：
+
+```text
+InternalError: Check failed: (supported.count(mcpu)) is false
+HCU arch gfx936 not supported for MLS/GEMM_MLS
+```
+
+因此挂载源上的**安全组合**是：让 `SGLANG_OPT_USE_AITER_INDEXER` 保持默认（HCU 上
+`server_args.py` 会自动 `set(True)`），只调整 MHC pre。
+
 ## 复发判据
 
 - 日志出现 `not supported for MLS/GEMM_MLS`，且 arch 与 rocminfo 一致；

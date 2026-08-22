@@ -50,7 +50,7 @@
 | [quant-scale-tp-split](failures/quant-scale-tp-split.md) | accuracy | suspected | per-channel scale 应按 output dim 切，per-tensor scale 不按 TP 切 |
 | [tilelang-hcu-gfx936-unsupported](failures/tilelang-hcu-gfx936-unsupported.md) | kernel | confirmed | tilelang GEMM 白名单不含 gfx936，MHC pre 编译期 hard assert |
 | [sgl-kernel-version-op-missing](failures/sgl-kernel-version-op-missing.md) | kernel | confirmed | wheel 落后于挂载源码，算子被重命名导致 `_OpNamespace` AttributeError |
-| [dsv4-hcu-garbled-output](failures/dsv4-hcu-garbled-output.md) | accuracy | suspected | gfx936 上启动正常但输出无语义；已排除 prompt 编码与 MHC aiter 路径 |
+| [dsv4-hcu-garbled-output](failures/dsv4-hcu-garbled-output.md) | accuracy | confirmed | export `SGLANG_OPT_USE_TILELANG_MHC_PRE=0` 覆盖 HCU 默认路径，MHC pre 落到未验证 fallback |
 
 ## Components
 

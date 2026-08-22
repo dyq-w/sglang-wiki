@@ -169,3 +169,59 @@ aiter    0.1.5+das185...
 
 两个 kernel 层 failure 的 `confirmed` 依据是根因排他（白名单直读 +
 符号级新旧名对比），不含端到端输出正确性。
+
+## 阶段四：确认根因 —— TILELANG_MHC_PRE=0 覆盖 HCU 默认（2026-08-22）
+
+wheel `sglang-0.5.15.post2+das.opt1.dtk2604.torch2100.2608132257.g97a193`
+安装到位、无 editable pth：
+
+```text
+srt       : None（顶层）
+environ   : /usr/local/lib/python3.10/dist-packages/sglang/srt/environ.py
+dsv4 model: /usr/local/lib/python3.10/dist-packages/sglang/srt/models/deepseek_v4.py
+dsv4 indxr: /usr/local/lib/python3.10/dist-packages/sglang/srt/layers/attention/dsv4/indexer.py
+server_arg: /usr/local/lib/python3.10/dist-packages/sglang/srt/server_args.py
+(no editable pth)
+```
+
+### 反证矩阵
+
+同一 `prefill.sh`，只调整两个 env 的 export，其余保持一致。同一 curl。
+
+| 变体 | `SGLANG_OPT_USE_TILELANG_MHC_PRE` | `SGLANG_OPT_USE_AITER_INDEXER` | content 首段（脱敏） |
+|---|---|---|---|
+| A | `0` | `false` | `#  _____...\n# \|\\ /\| 1.2.3.4.5.6.7. Hom nay Hom nay Hom nay ... {/cableimplication` |
+| B | `0` | (unset) | `#  _____...\n# <subtitle:> A. 2.2.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1. 7-lan.and so` |
+| C | (unset) | `false` | `你好呀！很高兴认识你！😊\n\n我是 **DeepSeek**，由深度求索公司创造的AI助手...` |
+
+结论：主因是 `TILELANG_MHC_PRE=0`。`AITER_INDEXER=false` 单独不产生乱码，
+说明 HCU indexer 在 wheel 版有多条数值正确路径可选。
+
+### 挂载源 vs wheel 的关键差异（回溯分析）
+
+之前挂载 `sglang-das @ 9ca1b25f7f` 时同时关这两个 env 会撞
+`HCU arch gfx936 not supported for MLS/GEMM_MLS`。原因：
+
+- wheel `indexer.py:730-742` 有一段 HCU lightop 兜底：
+
+```python
+elif envs.SGLANG_FP8_PAGED_MQA_LOGITS_TORCH.get():
+    ...
+else:
+    ...
+    from lightop.attention import paged_mqa_logits as fn
+```
+
+- 挂载源 `indexer.py:519` 的分支集里没有 HCU lightop 兜底，最终会 `from deep_gemm
+  import fp8_paged_mqa_logits`，内部拉起 tilelang MLS codegen 触发白名单。
+
+因此挂载源上 `AITER_INDEXER` 必须为 True（HCU 默认），把 indexer 稳在 aiter；
+wheel 版则不敏感。这是「同一命令、两份源码不同结论」的技术原因。
+
+### 教训
+
+- `EnvBool` 的优先级：外部 env > `server_args.py` 自动 override > `environ.py` default。
+  export=0 会硬性推翻 HCU 默认，是本次故障的直接原因。
+- 审查启动脚本时，凡 `SGLANG_OPT_*` 不知道正确值的一律不 export。
+- 挂载源与 wheel 的分岔逻辑差异可能大到「同一 workaround 一边有效一边致命」，
+  长期做修改建议以 wheel 同 commit 的 checkout 为基线（当前为 `g97a193`）。

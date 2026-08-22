@@ -15,3 +15,5 @@ Check failed.*supported\.count\(mcpu\)	tilelang-hcu-gfx936-unsupported	tilelang 
 \[slimquant_w4a8_marlin\] requested_backend=	slimquant-w4a8-logger-misleading	import-time 横幅，不代表 w4a8 生效，改看 MoE method 类名
 No (HuggingFace )?chat template found	dsv4-hcu-garbled-output	DeepSeek-V4 走 dsv4 原生编码器，该告警是噪声，不是乱码原因
 is still TokenizersBackend after retries	dsv4-hcu-garbled-output	transformers 不识别 deepseek_v4，降级为通用 tokenizer；不影响 dsv4 编码
+SGLANG_OPT_USE_TILELANG_MHC_PRE=0	dsv4-hcu-garbled-output	HCU 上关闭该 EnvBool 会走未验证 MHC pre fallback，导致静默乱码；不要 export
+finish_reason.*length.*content.*[|\\/_]{5,}	dsv4-hcu-garbled-output	长串 ASCII 框线 + finish_reason=length 是 HCU MHC pre 走错路径的典型输出
